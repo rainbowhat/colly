@@ -38,8 +38,6 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/urlfetch"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/antchfx/htmlquery"
@@ -379,28 +377,25 @@ func (c *Collector) Init() {
 func (c *Collector) Appengine(req *http.Request) {
 	client.Jar = c.backend.Client.Jar
 	client.CheckRedirect = c.backend.Client.CheckRedirect
-	client.Timeout = c.backend.Client.Timeout
-
-	c.backend.Client = client
 }
 
 // Visit starts Collector's collecting job by creating a
 // request to the URL specified in parameter.
 // Visit also calls the previously provided callbacks
 func (c *Collector) Visit(URL string) error {
-	return c.scrape(URL, "GET", 1, nil, nil, nil, true)
+	return c.scrape(URL, "GET", 1, nil, nil, true)
 }
 
 // Post starts a collector job by creating a POST request.
 // Post also calls the previously provided callbacks
 func (c *Collector) Post(URL string, requestData map[string]string) error {
-	return c.scrape(URL, "POST", 1, createFormReader(requestData), nil, nil, true)
+	return c.scrape(URL, "POST", 1, createFormReader(requestData), nil, true)
 }
 
 // PostRaw starts a collector job by creating a POST request with raw binary data.
 // Post also calls the previously provided callbacks
 func (c *Collector) PostRaw(URL string, requestData []byte) error {
-	return c.scrape(URL, "POST", 1, bytes.NewReader(requestData), nil, nil, true)
+	return c.scrape(URL, "POST", 1, bytes.NewReader(requestData), nil, true)
 }
 
 // PostMultipart starts a collector job by creating a Multipart POST request
