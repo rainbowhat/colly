@@ -377,8 +377,6 @@ func (c *Collector) Init() {
 // This function should be used when the scraper is initiated
 // by a http.Request to Google App Engine
 func (c *Collector) Appengine(req *http.Request) {
-	ctx := appengine.NewContext(req)
-	client := urlfetch.Client(ctx)
 	client.Jar = c.backend.Client.Jar
 	client.CheckRedirect = c.backend.Client.CheckRedirect
 	client.Timeout = c.backend.Client.Timeout
@@ -425,8 +423,8 @@ func (c *Collector) PostMultipart(URL string, requestData map[string][]byte) err
 //   - "DELETE"
 //   - "PATCH"
 //   - "OPTIONS"
-func (c *Collector) Request(method, URL string, requestData io.Reader, ctx *Context, hdr http.Header) error {
-	return c.scrape(URL, method, 1, requestData, ctx, hdr, true)
+func (c *Collector) Request(method, URL string, requestData io.Reader, hdr http.Header) error {
+	return c.scrape(URL, method, 1, requestData, hdr, true)
 }
 
 // SetDebugger attaches a debugger to the collector
@@ -448,23 +446,18 @@ func (c *Collector) UnmarshalRequest(r []byte) (*Request, error) {
 		return nil, err
 	}
 
-	ctx := NewContext()
-	for k, v := range req.Ctx {
-		ctx.Put(k, v)
-	}
 
 	return &Request{
 		Method:    req.Method,
 		URL:       u,
 		Body:      bytes.NewReader(req.Body),
-		Ctx:       ctx,
 		ID:        atomic.AddUint32(&c.requestCount, 1),
 		Headers:   &http.Header{},
 		collector: c,
 	}, nil
 }
 
-func (c *Collector) scrape(u, method string, depth int, requestData io.Reader, ctx *Context, hdr http.Header, checkRevisit bool) error {
+func (c *Collector) scrape(u, method string, depth int, requestData io.Reader, hdr http.Header, checkRevisit bool) error {
 	if err := c.requestCheck(u, method, depth, checkRevisit); err != nil {
 		return err
 	}
@@ -504,10 +497,10 @@ func (c *Collector) scrape(u, method string, depth int, requestData io.Reader, c
 	u = parsedURL.String()
 	c.wg.Add(1)
 	if c.Async {
-		go c.fetch(u, method, depth, requestData, ctx, hdr, req)
+		go c.fetch(u, method, depth, requestData, hdr, req)
 		return nil
 	}
-	return c.fetch(u, method, depth, requestData, ctx, hdr, req)
+	return c.fetch(u, method, depth, requestData, hdr, req)
 }
 
 func setRequestBody(req *http.Request, body io.Reader) {
@@ -542,15 +535,11 @@ func setRequestBody(req *http.Request, body io.Reader) {
 	}
 }
 
-func (c *Collector) fetch(u, method string, depth int, requestData io.Reader, ctx *Context, hdr http.Header, req *http.Request) error {
+func (c *Collector) fetch(u, method string, depth int, requestData io.Reader, hdr http.Header, req *http.Request) error {
 	defer c.wg.Done()
-	if ctx == nil {
-		ctx = NewContext()
-	}
 	request := &Request{
 		URL:       req.URL,
 		Headers:   &req.Header,
-		Ctx:       ctx,
 		Depth:     depth,
 		Method:    method,
 		Body:      requestData,
@@ -574,7 +563,7 @@ func (c *Collector) fetch(u, method string, depth int, requestData io.Reader, ct
 
 	origURL := req.URL
 	response, err := c.backend.Cache(req, c.MaxBodySize, c.CacheDir)
-	if err := c.handleOnError(response, err, request, ctx); err != nil {
+	if err := c.handleOnError(response, err, request); err != nil {
 		return err
 	}
 	if req.URL != origURL {
@@ -582,7 +571,6 @@ func (c *Collector) fetch(u, method string, depth int, requestData io.Reader, ct
 		request.Headers = &req.Header
 	}
 	atomic.AddUint32(&c.responseCount, 1)
-	response.Ctx = ctx
 	response.Request = request
 
 	err = response.fixCharset(c.DetectCharset, request.ResponseCharacterEncoding)
@@ -594,12 +582,12 @@ func (c *Collector) fetch(u, method string, depth int, requestData io.Reader, ct
 
 	err = c.handleOnHTML(response)
 	if err != nil {
-		c.handleOnError(response, err, request, ctx)
+		c.handleOnError(response, err, request)
 	}
 
 	err = c.handleOnXML(response)
 	if err != nil {
-		c.handleOnError(response, err, request, ctx)
+		c.handleOnError(response, err, request)
 	}
 
 	c.handleOnScraped(response)
@@ -994,7 +982,7 @@ func (c *Collector) handleOnXML(resp *Response) error {
 	return nil
 }
 
-func (c *Collector) handleOnError(response *Response, err error, request *Request, ctx *Context) error {
+func (c *Collector) handleOnError(response *Response, err error, request *Request) error {
 	if err == nil && (c.ParseHTTPErrorResponse || response.StatusCode < 203) {
 		return nil
 	}
@@ -1004,7 +992,6 @@ func (c *Collector) handleOnError(response *Response, err error, request *Reques
 	if response == nil {
 		response = &Response{
 			Request: request,
-			Ctx:     ctx,
 		}
 	}
 	if c.debugger != nil {
@@ -1015,9 +1002,6 @@ func (c *Collector) handleOnError(response *Response, err error, request *Reques
 	}
 	if response.Request == nil {
 		response.Request = request
-	}
-	if response.Ctx == nil {
-		response.Ctx = request.Ctx
 	}
 	for _, f := range c.errorCallbacks {
 		f(response, err)
