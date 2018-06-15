@@ -370,15 +370,6 @@ func (c *Collector) Init() {
 	c.ID = atomic.AddUint32(&collectorCounter, 1)
 }
 
-// Appengine will replace the Collector's backend http.Client
-// With an Http.Client that is provided by appengine/urlfetch
-// This function should be used when the scraper is initiated
-// by a http.Request to Google App Engine
-func (c *Collector) Appengine(req *http.Request) {
-	client.Jar = c.backend.Client.Jar
-	client.CheckRedirect = c.backend.Client.CheckRedirect
-}
-
 // Visit starts Collector's collecting job by creating a
 // request to the URL specified in parameter.
 // Visit also calls the previously provided callbacks
@@ -405,7 +396,7 @@ func (c *Collector) PostMultipart(URL string, requestData map[string][]byte) err
 	hdr := http.Header{}
 	hdr.Set("Content-Type", "multipart/form-data; boundary="+boundary)
 	hdr.Set("User-Agent", c.UserAgent)
-	return c.scrape(URL, "POST", 1, createMultipartReader(boundary, requestData), nil, hdr, true)
+	return c.scrape(URL, "POST", 1, createMultipartReader(boundary, requestData), hdr, true)
 }
 
 // Request starts a collector job by creating a custom HTTP request
